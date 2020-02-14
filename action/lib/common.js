@@ -15,44 +15,38 @@
  * limitations under the License.
  */
 
-const request = require('request');
+const needle = require('needle');
 const openwhisk = require('openwhisk');
 const config = require('./config');
 
 function requestHelper(url, input, method) {
 
-    return new Promise(function(resolve, reject) {
+    const options = {
+        json: true,
+        rejectUnauthorized: false
+    };
 
-        var options = {
-            method : method,
-            url : url,
-            json: true,
-            rejectUnauthorized: false
-        };
-
-        if (method === 'get') {
-            options.qs = input;
-        } else {
-            options.body = input;
-        }
-
-        request(options, function(error, response, body) {
-
-            if (!error && response.statusCode === 200) {
-                resolve(body);
+    // needle takes e.g. 'put' not 'PUT'
+    return needle(method.toLowerCase(), url, input, options)
+        .then(resp => {
+            if(resp.statusCode === 200) {
+                return resp.body;
+            } else {
+                const error = new Error(resp.body.error || resp.statusMessage);
+                error.statusCode = resp.statusCode; // the http status code
+                error.error = resp.body; // the error body
+                throw error;
             }
-            else {
-                if (response) {
-                    console.log('alarm: Error invoking whisk action:', response.statusCode, body);
-                    reject(body);
-                }
-                else {
-                    console.log('alarm: Error invoking whisk action:', error);
-                    reject(error);
-                }
+        })
+        .catch(err => {
+            console.log(err);
+            if (err.response) {
+                console.log('alarm: Error invoking whisk action:', err.response.statusCode, err.body);
+            } else {
+                console.log('alarm: Error invoking whisk action:', err);
             }
+            throw err;
         });
-    });
 }
 
 function createWebParams(rawParams) {
